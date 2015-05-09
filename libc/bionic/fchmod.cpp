@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2015 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,40 +26,47 @@
  * SUCH DAMAGE.
  */
 
-#include "private/bionic_mbstate.h"
-
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <errno.h>
+#include <unistd.h>
+#include <stdio.h>
 
-__LIBC_HIDDEN__ size_t mbstate_bytes_so_far(const mbstate_t* ps) {
-  return
-    (ps->__seq[2] != 0) ? 3 :
-    (ps->__seq[1] != 0) ? 2 :
-    (ps->__seq[0] != 0) ? 1 : 0;
-}
+extern "C" int __fchmod(int, mode_t);
 
-__LIBC_HIDDEN__ void mbstate_set_byte(mbstate_t* ps, int i, char byte) {
-  ps->__seq[i] = static_cast<uint8_t>(byte);
-}
+int fchmod(int fd, mode_t mode) {
+  int saved_errno = errno;
+  int result = __fchmod(fd, mode);
 
-__LIBC_HIDDEN__ uint8_t mbstate_get_byte(const mbstate_t* ps, int n) {
-  return ps->__seq[n];
-}
+  if ((result == 0) || (errno != EBADF)) {
+    return result;
+  }
 
-__LIBC_HIDDEN__ size_t reset_and_return_illegal(int _errno, mbstate_t* ps) {
-  errno = _errno;
-#ifndef __LP64__
-  ps->__seq32 = 0;
-#else
-  *(reinterpret_cast<uint32_t*>(ps->__seq)) = 0;
-#endif
-  return __MB_ERR_ILLEGAL_SEQUENCE;
-}
+  // fd could be an O_PATH file descriptor, and the kernel
+  // may not directly support fchmod() on such a file descriptor.
+  // Use /proc/self/fd instead to emulate this support.
+  // https://sourceware.org/bugzilla/show_bug.cgi?id=14578
+  //
+  // As of February 2015, there are no kernels which support fchmod
+  // on an O_PATH file descriptor, and "man open" documents fchmod
+  // on O_PATH file descriptors as returning EBADF.
+  int fd_flag = fcntl(fd, F_GETFL);
+  if ((fd_flag == -1) || ((fd_flag & O_PATH) == 0)) {
+    errno = EBADF;
+    return -1;
+  }
 
-__LIBC_HIDDEN__ size_t reset_and_return(int _return, mbstate_t* ps) {
-#ifndef __LP64__
-  ps->__seq32 = 0;
-#else
-  *(reinterpret_cast<uint32_t*>(ps->__seq)) = 0;
-#endif
-  return _return;
+  char buf[40];
+  snprintf(buf, sizeof(buf), "/proc/self/fd/%d", fd);
+  errno = saved_errno;
+  result = chmod(buf, mode);
+  if ((result == -1) && (errno == ELOOP)) {
+    // Linux does not support changing the mode of a symlink.
+    // For fchmodat(AT_SYMLINK_NOFOLLOW), POSIX requires a return
+    // value of ENOTSUP. Assume that's true here too.
+    errno = ENOTSUP;
+  }
+
+  return result;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2015 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,40 +26,42 @@
  * SUCH DAMAGE.
  */
 
-#include "private/bionic_mbstate.h"
-
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <errno.h>
+#include <unistd.h>
 
-__LIBC_HIDDEN__ size_t mbstate_bytes_so_far(const mbstate_t* ps) {
-  return
-    (ps->__seq[2] != 0) ? 3 :
-    (ps->__seq[1] != 0) ? 2 :
-    (ps->__seq[0] != 0) ? 1 : 0;
-}
+#include "private/ErrnoRestorer.h"
 
-__LIBC_HIDDEN__ void mbstate_set_byte(mbstate_t* ps, int i, char byte) {
-  ps->__seq[i] = static_cast<uint8_t>(byte);
-}
+extern "C" int __fchmodat(int, const char*, mode_t);
 
-__LIBC_HIDDEN__ uint8_t mbstate_get_byte(const mbstate_t* ps, int n) {
-  return ps->__seq[n];
-}
+int fchmodat(int dirfd, const char* pathname, mode_t mode, int flags) {
+  if ((flags & ~AT_SYMLINK_NOFOLLOW) != 0) {
+    errno = EINVAL;
+    return -1;
+  }
 
-__LIBC_HIDDEN__ size_t reset_and_return_illegal(int _errno, mbstate_t* ps) {
-  errno = _errno;
-#ifndef __LP64__
-  ps->__seq32 = 0;
-#else
-  *(reinterpret_cast<uint32_t*>(ps->__seq)) = 0;
-#endif
-  return __MB_ERR_ILLEGAL_SEQUENCE;
-}
+  if (flags & AT_SYMLINK_NOFOLLOW) {
+    // Emulate AT_SYMLINK_NOFOLLOW using the mechanism described
+    // at https://sourceware.org/bugzilla/show_bug.cgi?id=14578
+    // comment #10
 
-__LIBC_HIDDEN__ size_t reset_and_return(int _return, mbstate_t* ps) {
-#ifndef __LP64__
-  ps->__seq32 = 0;
-#else
-  *(reinterpret_cast<uint32_t*>(ps->__seq)) = 0;
-#endif
-  return _return;
+    int fd = openat(dirfd, pathname, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+    if (fd == -1) {
+      return -1; // returns errno from openat
+    }
+
+    // POSIX requires that ENOTSUP be returned when the system
+    // doesn't support setting the mode of a symbolic link.
+    // This is true for all Linux kernels.
+    // We rely on the O_PATH compatibility layer added in the
+    // fchmod() function to get errno correct.
+    int result = fchmod(fd, mode);
+    ErrnoRestorer errno_restorer; // don't let close() clobber errno
+    close(fd);
+    return result;
+  }
+
+  return __fchmodat(dirfd, pathname, mode);
 }

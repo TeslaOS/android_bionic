@@ -1969,8 +1969,8 @@ bool soinfo::PrelinkImage() {
         if ((dynamic_flags & PF_W) != 0) {
           d->d_un.d_val = reinterpret_cast<uintptr_t>(&_r_debug);
         }
-        break;
 #endif
+        break;
 #if defined(USE_RELA)
       case DT_RELA:
         rela = reinterpret_cast<ElfW(Rela)*>(load_bias + d->d_un.d_ptr);
@@ -2108,6 +2108,13 @@ bool soinfo::PrelinkImage() {
         // Set the DT_MIPS_RLD_MAP entry to the address of _r_debug for GDB.
         {
           r_debug** dp = reinterpret_cast<r_debug**>(load_bias + d->d_un.d_ptr);
+          *dp = &_r_debug;
+        }
+        break;
+      case DT_MIPS_RLD_MAP2:
+        // Set the DT_MIPS_RLD_MAP2 entry to the address of _r_debug for GDB.
+        {
+          r_debug** dp = reinterpret_cast<r_debug**>(reinterpret_cast<ElfW(Addr)>(d) + d->d_un.d_val);
           *dp = &_r_debug;
         }
         break;
