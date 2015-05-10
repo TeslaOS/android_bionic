@@ -504,6 +504,7 @@ libc_arch_static_src_files := \
 libc_common_cflags := \
     -D_LIBC=1 \
     -Wall -Wextra -Wunused \
+    -fno-strict-aliasing \
 
 ifneq ($(TARGET_USES_LOGD),false)
 libc_common_cflags += -DTARGET_USES_LOGD
