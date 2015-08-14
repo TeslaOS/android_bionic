@@ -525,7 +525,6 @@ libc_common_cflags += \
     -Werror=pointer-to-int-cast \
     -Werror=int-to-pointer-cast \
     -Werror=type-limits \
-    -Wno-error=clobbered \
     #-Werror \
 
 ifeq ($(strip $(DEBUG_BIONIC_LIBC)),true)
