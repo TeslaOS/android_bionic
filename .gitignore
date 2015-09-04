@@ -1,3 +1,4 @@
 *.pyc
+*~
 *.*~
 libc/kernel/original
