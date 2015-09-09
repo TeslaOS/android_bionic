@@ -14,4 +14,3 @@ libc_bionic_src_files_arm += \
     arch-arm/cortex-a15/bionic/strlen.S \
     arch-arm/cortex-a15/bionic/stpcpy.S \
     arch-arm/krait/bionic/memmove.S
-
